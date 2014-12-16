@@ -174,7 +174,7 @@ class ReqParseTestCase(unittest.TestCase):
         self.assertEquals(True, arg.case_sensitive)
 
     def test_viewargs(self):
-        req = Mock()
+        req = Request.from_values()
         req.view_args = {"foo": "bar"}
         parser = RequestParser()
         parser.add_argument("foo", location=["view_args"], type=str)
@@ -502,8 +502,9 @@ class ReqParseTestCase(unittest.TestCase):
         self.assertRaises(KeyError, lambda: namespace['eggs'])
 
     def test_namespace_configurability(self):
-        self.assertTrue(isinstance(RequestParser().parse_args(), Namespace))
-        self.assertTrue(type(RequestParser(namespace_class=dict).parse_args()) is dict)
+        req = Request.from_values()
+        self.assertTrue(isinstance(RequestParser().parse_args(req), Namespace))
+        self.assertTrue(type(RequestParser(namespace_class=dict).parse_args(req)) is dict)
 
     def test_none_argument(self):
 
@@ -652,6 +653,16 @@ class ReqParseTestCase(unittest.TestCase):
             self.assertEquals(args['foo'], 1)
             self.assertEquals(args['baz'], 2)
 
+    def test_not_json_location_and_content_type_json(self):
+        app = Flask(__name__)
+
+        parser = RequestParser()
+        parser.add_argument('foo', location='args')
+
+        with app.test_request_context('/bubble', method='get',
+                                      content_type='application/json'):
+            parser.parse_args() # Should not raise a 400: BadRequest
+
     def test_request_parser_remove_argument(self):
         req = Request.from_values("/bubble?foo=baz")
         parser = RequestParser()
@@ -661,6 +672,30 @@ class ReqParseTestCase(unittest.TestCase):
 
         args = parser_copy.parse_args(req)
         self.assertEquals(args, {})
+
+    def test_strict_parsing_off(self):
+        req = Request.from_values("/bubble?foo=baz")
+        parser = RequestParser()
+        args = parser.parse_args(req)
+        self.assertEquals(args, {})
+
+    def test_strict_parsing_on(self):
+        req = Request.from_values("/bubble?foo=baz")
+        parser = RequestParser()
+        self.assertRaises(exceptions.BadRequest, parser.parse_args, req, strict=True)
+
+    def test_strict_parsing_off_partial_hit(self):
+        req = Request.from_values("/bubble?foo=1&bar=bees&n=22")
+        parser = RequestParser()
+        parser.add_argument('foo', type=int)
+        args = parser.parse_args(req)
+        self.assertEquals(args['foo'], 1)
+
+    def test_strict_parsing_on_partial_hit(self):
+        req = Request.from_values("/bubble?foo=1&bar=bees&n=22")
+        parser = RequestParser()
+        parser.add_argument('foo', type=int)
+        self.assertRaises(exceptions.BadRequest, parser.parse_args, req, strict=True)
 
 
 if __name__ == '__main__':
